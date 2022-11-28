@@ -8,37 +8,29 @@
 
 int main() {
 
-	char* tmp = (char*)malloc(16);
-	char* tmp2 = (char*) realloc(tmp,3*sizeof(char));
-	char* tmp3 = (char*) calloc(3,sizeof(int));
-	void* a = MallocDebug::MallocDebug_malloc(34);
-	//printf("%3s\n\n", tmp);
+	MallocDebug::MallocDebug_Init();
+	void* goodPointer0 = malloc(10*sizeof(int));
+	void* goodPointer1 = calloc(20, sizeof(int));
+	void* leakPointer0 = malloc(10*sizeof(int));
+	void* leakPointer1 = calloc(20, sizeof(int));
+	void* leakPointer2 = malloc(100*sizeof(int));
+	leakPointer2 = realloc(leakPointer2, 500*sizeof(int));
+
+	void* wrongCall0 = malloc(NULL);
+	void* wrongCall1 = malloc(0);		//should be same as NULL
+	void* wrongCall2 = calloc(0,0);
+	void* wrongCall3 = calloc(0,1);
+	void* wrongCall4 = calloc(1,0);
+	//void* wrongCall5 = realloc(NULL,3);
+	//void* wrongCall6 = realloc(NULL,0);
+	int test;
+	void* wrongCall7 = realloc(&test,5);
+	void* wrongCall8 = realloc(&test,0);
 
 
-	MallocDebug::MallocDebug_Init();
-	malloc(2);
-	calloc(3,3);
-	MallocDebug::MallocDebug_Init();
-	MallocDebug::MallocDebug_Init();
-
-	realloc(tmp,4);
-	free(tmp);
+	free(goodPointer0);
+	free(goodPointer1);
 
 	MallocDebug::MallocDebug_Done();
-
-//does not work, i am probably not in the IAT
-//THE INDEX OF THE ORIGINAL-FIRST-THUNK WILL THE BE SAME IN THE IAT
-
-	printf("\nmalloc after sub: %p", malloc);
-	tmp = (char*)malloc(2);
-	MallocDebug::MallocDebug_Done();
-
-	printf("\n%p",tmp);
-
-	//Generic IAT for all imported functions
-
-
- 	//PFirstImportDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)(((BYTE*)pDosHeader) + PDataDir[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress+1);
-
 	return 0;
 }

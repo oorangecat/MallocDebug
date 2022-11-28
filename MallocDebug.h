@@ -8,9 +8,21 @@
 #include <iostream>
 #include <windows.h>
 
+#define BLOCKSPACE 100
+
+enum funTypes{none, mal, cal, real, fr};
+
+typedef struct allocMem_s{
+		bool allocated = false;
+		void* ptr;
+		size_t size;
+		funTypes lastOp = none;
+}allocMem_t;
 
 static class MallocDebug {
 		static uint32_t oldMalloc, oldCalloc, oldRealloc, oldFree;
+		static allocMem_t allocatedBlocks[BLOCKSPACE];
+		static uint32_t firstBlock;
 
 public:
 
