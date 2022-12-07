@@ -5,10 +5,15 @@
 #ifndef H2_MALLOCDEBUG_H
 #define H2_MALLOCDEBUG_H
 
+#ifndef DEBUG 
+#define DEBUG false
+#endif
+
 #include <iostream>
 #include <windows.h>
 
-#define BLOCKSPACE 100
+#define BLOCKSPACE 2000
+
 
 enum funTypes{none, mal, cal, real, fr};
 
@@ -20,9 +25,10 @@ typedef struct allocMem_s{
 }allocMem_t;
 
 static class MallocDebug {
-		static uint32_t oldMalloc, oldCalloc, oldRealloc, oldFree;
+		static void *oldMalloc, *oldCalloc, *oldRealloc, *oldFree;
 		static allocMem_t allocatedBlocks[BLOCKSPACE];
-		static uint32_t firstBlock;
+		static unsigned int firstBlock;
+		static bool initiated;
 
 public:
 
