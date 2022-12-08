@@ -1,7 +1,4 @@
 #include <iostream>
-#include <windows.h>
-#include <stdio.h>
-#include <String.h>
 
 #include "MallocDebug.h"
 #include "MallocDebug.h"
@@ -9,6 +6,8 @@
 
 
 int main() {
+	MallocDebug::MallocDebug_Done();
+
 
 	MallocDebug::MallocDebug_Init();
 	MallocDebug::MallocDebug_Init();
@@ -39,7 +38,6 @@ int main() {
 	void* wrongCall7 = realloc(&test,5);
 	void* wrongCall8 = realloc(&test,0);
 */
-
 
 	delete(arrayGood);
 	free(goodPointer0);

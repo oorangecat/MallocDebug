@@ -3,6 +3,7 @@
 //
 
 #include "MallocDebug.h"
+#define MAXLEN 30
 
 void *MallocDebug::oldMalloc=NULL;
 void *MallocDebug::oldCalloc=NULL;
@@ -12,7 +13,7 @@ void *MallocDebug::oldFree=NULL;
 bool MallocDebug::initiated=false;
 
 allocMem_t MallocDebug::allocatedBlocks[BLOCKSPACE];
-unsigned int MallocDebug::firstBlock;
+unsigned int MallocDebug::firstBlock = 0;
 
 void MallocDebug::MallocDebug_Init() {
 
@@ -34,12 +35,12 @@ void MallocDebug::MallocDebug_Init() {
 	//temp variable for retbyref OldProtect of VirtualProtect
 	DWORD temp;
 
+
 	//list of imported dll
 	PIMAGE_IMPORT_DESCRIPTOR ImportListAddress = (PIMAGE_IMPORT_DESCRIPTOR)(((BYTE*)pDosHeader) + PDataDir[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 	size_t ImportListSize =  PDataDir[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
 	PIMAGE_IMPORT_DESCRIPTOR ImportListEnd = ImportListAddress + ImportListSize;
 
-	char funname[8];
 
 	PIMAGE_THUNK_DATA OriginalFirstT;
 	PIMAGE_IMPORT_BY_NAME impByName;
@@ -50,7 +51,7 @@ void MallocDebug::MallocDebug_Init() {
 	oldMalloc=NULL; oldFree=NULL; oldRealloc=NULL; oldCalloc=NULL;
 
 	//loop inside DLL import functions list
-	for(; curr != ImportListEnd && curr->Characteristics != NULL; curr++ ){
+	for(; curr < ImportListEnd && curr->Characteristics != NULL; curr++ ){
 
 		//Extract OriginalFirstT (needed for name) and FirstThunk (actual address used)
 		OriginalFirstT = (PIMAGE_THUNK_DATA)(((BYTE*)pDosHeader)+(curr->OriginalFirstThunk));
@@ -60,27 +61,28 @@ void MallocDebug::MallocDebug_Init() {
 		while(OriginalFirstT->u1.AddressOfData != NULL) {
 
 				impByName = (PIMAGE_IMPORT_BY_NAME)((BYTE*)pDosHeader + OriginalFirstT->u1.AddressOfData);
-				strncpy_s(funname,impByName->Name,7);
 
-				if(strncmp(funname,"malloc",6) == 0 ) {
+				if(strncmp(impByName->Name,"malloc",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 
 					//Make the field writable
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						MallocDebug_Done();
 						fprintf(stderr, "\nVirtual Protect failed, MallocDebug not initiated");
 						return;
 					}
 					if(oldMalloc==NULL)
 						oldMalloc = (void*) FirstThunk->u1.Function;
+					else if (oldMalloc != (void*) FirstThunk->u1.Function)
+						fprintf(stderr,"\nMalloc has more than one address. Anti reverse engineering measures could be in place ");
 
 					//Replace the address
 					FirstThunk->u1.Function = (DWORD_PTR) MallocDebug_malloc;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
-				} else if(strncmp(funname,"calloc",6) == 0 ) {
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
+				} else if(strncmp(impByName->Name,"calloc",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						MallocDebug_Done();	//revert any change
 						fprintf(stderr, "\nVirtual Protect failed, MallocDebug not initiated");
 						return;
@@ -88,14 +90,16 @@ void MallocDebug::MallocDebug_Init() {
 
 					if(oldCalloc==NULL)
 						oldCalloc = (void*) FirstThunk->u1.Function;
+					else if (oldCalloc != (void*) FirstThunk->u1.Function)
+						fprintf(stderr,"\nCalloc has more than one address. Anti reverse engineering measures could be in place ");
 
 					FirstThunk->u1.Function = (DWORD_PTR) MallocDebug_calloc;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
-				} else if(strncmp(funname,"realloc",6) == 0 ) {
+				} else if(strncmp(impByName->Name,"realloc",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						MallocDebug_Done();
 						fprintf(stderr, "\nVirtual Protect failed, MallocDebug not initiated");
 						return;
@@ -103,14 +107,16 @@ void MallocDebug::MallocDebug_Init() {
 
 					if(oldRealloc==NULL)
 						oldRealloc = (void*) FirstThunk->u1.Function;
+					else if (oldRealloc != (void*) FirstThunk->u1.Function)
+						fprintf(stderr,"\nRealloc has more than one address. Anti reverse engineering measures could be in place ");
 
 					FirstThunk->u1.Function = (DWORD_PTR) MallocDebug_realloc;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
-				} else if(strncmp(funname,"free",4) == 0 ) {
+				} else if(strncmp(impByName->Name,"free",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						MallocDebug_Done();
 						fprintf(stderr, "\nVirtual Protect failed, MallocDebug not initiated");
 						return;
@@ -118,9 +124,11 @@ void MallocDebug::MallocDebug_Init() {
 
 					if(oldFree==NULL)
 						oldFree = (void*) FirstThunk->u1.Function;
+					else if (oldFree != (void*) FirstThunk->u1.Function)
+						fprintf(stderr,"\nFree has more than one address. Anti reverse engineering measures could be in place ");
 
 					FirstThunk->u1.Function = (DWORD_PTR) MallocDebug_free;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
 				}
 
@@ -129,7 +137,6 @@ void MallocDebug::MallocDebug_Init() {
 	}
 
 	initiated = true;
-	firstBlock = 0;
 
 	return;
 }
@@ -138,7 +145,6 @@ void MallocDebug::MallocDebug_Init() {
 //If MallocDebug_Init() was not called before, this will not have any effect
 
 void MallocDebug::MallocDebug_Done() {
-
 
 	//Getting the DOS Header
 	HMODULE hPEFile = GetModuleHandle(NULL); // NULL means the current process
@@ -156,12 +162,12 @@ void MallocDebug::MallocDebug_Done() {
 	//temp variable for retbyref OldProtect of VirtualProtect
 	DWORD temp;
 
+
 	//list of imported dll
 	PIMAGE_IMPORT_DESCRIPTOR ImportListAddress = (PIMAGE_IMPORT_DESCRIPTOR)(((BYTE*)pDosHeader) + PDataDir[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 	size_t ImportListSize =  PDataDir[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
 	PIMAGE_IMPORT_DESCRIPTOR ImportListEnd = ImportListAddress + ImportListSize;
 
-	char funname[8];
 
 	PIMAGE_THUNK_DATA OriginalFirstT;
 	PIMAGE_IMPORT_BY_NAME impByName;
@@ -171,7 +177,7 @@ void MallocDebug::MallocDebug_Done() {
 
 
 	//loop inside DLL import functions list
-	for(; curr != ImportListEnd && curr->Characteristics != NULL; curr++ ){
+	for(; curr < ImportListEnd && curr->Characteristics != NULL; curr++ ){
 
 		//Extract OriginalFirstT (needed for name) and FirstThunk (actual address used)
 		OriginalFirstT = (PIMAGE_THUNK_DATA)(((BYTE*)pDosHeader)+(curr->OriginalFirstThunk));
@@ -181,52 +187,51 @@ void MallocDebug::MallocDebug_Done() {
 		while(OriginalFirstT->u1.AddressOfData != NULL) {
 
 			impByName = (PIMAGE_IMPORT_BY_NAME)((BYTE*)pDosHeader + OriginalFirstT->u1.AddressOfData);
-			strncpy_s(funname,impByName->Name,7);
 
-			if(strncmp(funname,"malloc",6) == 0 ) {
+			if(strncmp(impByName->Name,"malloc",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 				//oldMalloc will be initiated only if the virtualProtect did not fail in the init
 				if(oldMalloc!=NULL) {
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						fprintf(stderr, "\nFailed to restore original IAT. MallocDebug still in place");
 						return;
 					}
 					FirstThunk->u1.Function = (DWORD_PTR) oldMalloc;
 
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
 				}
-			} else if(strncmp(funname,"calloc",6) == 0 ) {
+			} else if(strncmp(impByName->Name,"calloc",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 				if(oldCalloc!=NULL){
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						fprintf(stderr, "\nFailed to restore original IAT. MallocDebug still in place");
 						return;
 					}
 					FirstThunk->u1.Function = (DWORD_PTR) oldCalloc;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
 				}
-			} else if(strncmp(funname,"realloc",6) == 0 ) {
+			} else if(strncmp(impByName->Name,"realloc",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 				if(oldRealloc!=NULL){
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						fprintf(stderr, "\nFailed to restore original IAT. MallocDebug still in place");
 						return;
 					}
 					FirstThunk->u1.Function = (DWORD_PTR) oldRealloc;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
 				}
 
-			} else if(strncmp(funname,"free",4) == 0 ) {
+			} else if(strncmp(impByName->Name,"free",strnlen_s(impByName->Name, MAXLEN)) == 0 ) {
 
 				if(oldFree!=NULL){
-					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READWRITE, (PDWORD) &temp)){
+					if(!VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), PAGE_READWRITE, (PDWORD) &temp)){
 						fprintf(stderr, "\nFailed to restore original IAT. MallocDebug still in place");
 						return;
 					}
 					FirstThunk->u1.Function = (DWORD_PTR) oldFree;
-					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(DWORD_PTR), PAGE_READONLY, (PDWORD) &temp);
+					VirtualProtect((LPVOID) &(FirstThunk->u1.Function), sizeof(FirstThunk->u1.Function), temp, (PDWORD) &temp);
 
 				}
 
@@ -237,6 +242,7 @@ void MallocDebug::MallocDebug_Done() {
 
 
 	}
+
 
 	if(initiated) {
 		allocMem_t *currBlock;
@@ -276,7 +282,8 @@ void MallocDebug::MallocDebug_Done() {
 	}
 
 	initiated = false;
-	oldMalloc=NULL; oldRealloc=NULL; oldCalloc=NULL; oldFree=NULL;
+	oldMalloc = NULL; oldRealloc = NULL; oldCalloc = NULL; oldFree = NULL;
+	firstBlock = 0;
 	return;
 
 
@@ -288,6 +295,7 @@ void* MallocDebug::MallocDebug_malloc(size_t Size) {
 	localMalloc=(void* (*) (size_t))oldMalloc;
 	
 	void* funRet;
+
 	//Size==0 should not cause an error but return a pointer to an item of length 0
 	if(Size==0){
 		fprintf(stderr, "\nMalloc called with Size 0.");
@@ -300,7 +308,7 @@ void* MallocDebug::MallocDebug_malloc(size_t Size) {
 	funRet = localMalloc(Size);
 
 	//if errno is set, the function did not succeed
-	if(errno != 0) {
+	if(errno != 0 || funRet == NULL) {
 		fprintf(stderr, "\nMalloc of size %zd failed",Size);
 	} else if(firstBlock < BLOCKSPACE) {
 		allocatedBlocks[firstBlock].size = Size;
@@ -328,12 +336,11 @@ void* MallocDebug::MallocDebug_realloc(void *Block, size_t size) {
 	int idx;
 
 	//find relative block
-	for(idx=0; idx<firstBlock; idx++){
-		if(Block==allocatedBlocks[idx].ptr){
+	for(idx=0; idx < firstBlock; idx++) {
+		if(Block == allocatedBlocks[idx].ptr){
 			curr=&allocatedBlocks[idx];
 			break;
 		}
-		idx++;
 	}
 
 	if((idx>=firstBlock || idx == 0) && Block != NULL){		//These situations may cause a crash
@@ -343,11 +350,11 @@ void* MallocDebug::MallocDebug_realloc(void *Block, size_t size) {
 		fprintf(stderr, "\nRealloc called on a NULL pointer with size %zd. It will allocate %zd bytes, behaving as a malloc", size, size);
 	}
 
-	//if size==0, works as a free
 	funRet = localRealloc(Block,size);
 
-	if(size==0){
-		if(funRet==NULL && curr != NULL){
+	//if size==0, works as a free
+	if(size == 0) {
+		if(funRet==NULL && curr != NULL) {
 			curr->allocated = false;
 			curr->lastOp = real;
 		} else { 	//if size==0 and ret!=NULL, error occurred 
@@ -355,12 +362,19 @@ void* MallocDebug::MallocDebug_realloc(void *Block, size_t size) {
 		}
 	} else if(funRet==NULL) {		//if size>0 and ret==NULL, error occurred
 		fprintf(stderr, "Realloc of ptr %p with size %zd failed", Block, size);
+	} else if(Block==NULL) {		//if no other errors found but Block is NULL, works as a malloc
+		curr = &allocatedBlocks[firstBlock];
+		firstBlock++;
+		curr->allocated = true;
+		curr->lastOp = real;
+		curr->ptr = funRet;
+		curr->size = size;
 	} else if(curr != NULL) {
 		curr->ptr = funRet;
 		curr->lastOp = real;
 		curr->size = size;
 		curr->allocated = true;
-	}
+	} 
 
 	#if DEBUG == true
 	printf("\nRealloc ptr: %p size: %zd\n", Block, size);
@@ -380,7 +394,7 @@ void* MallocDebug::MallocDebug_calloc(size_t count, size_t size) {
 	_set_errno(0);		//Resets errno
 	void* funRet = localCalloc(count,size);
 
-	if(errno != 0){
+	if(errno != 0 || funRet == NULL){
 		fprintf(stderr,"\nCalloc failed, %zd elements of %zd size not allocated", count, size);
 	} else if(firstBlock < BLOCKSPACE) {
 		allocatedBlocks[firstBlock].size = count * size;
@@ -409,13 +423,13 @@ void MallocDebug::MallocDebug_free(void *Block) {
 	printf("\nFree: %p\n", Block);
 	#endif
 
-	if(Block == NULL){
+	if(Block == NULL) {
 		fprintf(stderr, "\nFree was called with a NULL pointer. No block will be freed");
 		localFree(Block);
 		return;
 	} else {
 		//find the allocated block
-		for(idx=0; idx < firstBlock; idx++) {
+		for(idx = 0; idx < firstBlock; idx++) {
 			curr = &allocatedBlocks[idx];
 
 			if(!curr->allocated)
@@ -425,9 +439,10 @@ void MallocDebug::MallocDebug_free(void *Block) {
 				break;
 		}
 
-		if(idx >=firstBlock)
+		if(idx==0 || idx >= firstBlock){
 			fprintf(stderr, "Free called on an unknown Block. Dependingly on how the memory was allocated, this may cause a crash.");
-
+			curr=NULL;
+		}
 		//reset errno and call free
 		_set_errno(0);
 		localFree(Block);
@@ -435,7 +450,7 @@ void MallocDebug::MallocDebug_free(void *Block) {
 		//check for errors
 		if(errno != 0){
 			fprintf(stderr,"\nAn error occured while freeing pointer %p", Block);
-		} else if(idx >= firstBlock){
+		} else if(curr==NULL){
 			fprintf(stderr,"\nFree was called with pointer %p which was not dinamically allocated",Block);
 		} else {
 			curr->allocated = false;
